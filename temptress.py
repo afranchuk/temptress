@@ -4,18 +4,47 @@ from functools import partial
 import re
 import sys
 
+def split_fields(s):
+    i = 0
+    out = []
+    curstr = ""
+    escape = False
+    string = False
+    for i in range(0,len(s)):
+        if s[i] == '\\':
+            if escape:
+                curstr += '\\'
+            escape = not escape
+        elif s[i] == '"':
+            if escape:
+                curstr += '"'
+                escape = False
+            else:
+                string = not string
+        elif s[i] == ' ':
+            if string:
+                curstr += ' '
+            else:
+                out.append(curstr)
+                curstr = ""
+        else:
+            curstr += s[i]
+    if len(curstr) > 0:
+        out.append(curstr)
+    return out
+
 def parse_template_macro(s):
     m = re.search(r":(.*)", s)
     arr = []
     if m:
-        ids = m.group(1).split(" ")
+        ids = split_fields(m.group(1))
         lines = s[m.end(0):].split("\n")
         for line in lines:
-            vals = line.split(" ")
+            vals = split_fields(line)
             if len(vals) == len(ids):
-                arr.append(dict(zip(ids,line.split(" "))))
+                arr.append(dict(zip(ids,vals)))
     else:
-        raise Exception("FAIL")
+        raise Exception("Missing indices")
     return arr
 
 def remove_lines_between(st, sindex, eindex):
@@ -48,31 +77,35 @@ def run_input(defs, inp):
             template = p.group(1)
 
             filled_lines = map(partial(fill_template,template),defs[k])
-            return inp_begin + ''.join(filled_lines) + inp_end
+            inp = inp_begin + ''.join(filled_lines) + inp_end
+    return inp
+
+def get_defs(data):
+    m_defs = {}
+    for p in re.finditer(r"within (.*) {(.*)}", tdata, re.S):
+        m_defs[p.group(1)] = parse_template_macro(p.group(2))
+    return m_defs
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:
-        print "Usage: %s def_file template_file\n" % sys.argv[0]
+        print "Usage: %s def_file template_file [template_file ...]\n" % sys.argv[0]
         sys.exit(-1)
 
     tvalfile = sys.argv[1]
-    tfile = sys.argv[2]
-
-    m_defs = {}
 
     with open (tvalfile, "r") as f:
         tdata = f.read()
 
-    for p in re.finditer(r"within (.*) {(.*)}", tdata, re.S):
-        m_defs[p.group(1)] = parse_template_macro(p.group(2))
+    m_defs = get_defs(tdata)
 
-    # Match the template macros in the file!
-    f = open (tfile, "r+")
-    fdata = f.read()
+    for i in range(2,len(sys.argv)):
+        # Match the template macros in the file(s)!
+        f = open (sys.argv[i], "r+")
+        fdata = f.read()
 
-    fdata = run_input(m_defs, fdata)
+        fdata = run_input(m_defs, fdata)
 
-    f.seek(0)
-    f.truncate()
-    f.write(fdata)
-    f.close()
+        f.seek(0)
+        f.truncate()
+        f.write(fdata)
+        f.close()
