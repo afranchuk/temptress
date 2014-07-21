@@ -82,7 +82,7 @@ def run_input(defs, inp):
 
 def get_defs(data):
     m_defs = {}
-    for p in re.finditer(r"within (.*) {(.*)}", tdata, re.S):
+    for p in re.finditer(r"within (.*?) {(.*?)}", tdata, re.S):
         m_defs[p.group(1)] = parse_template_macro(p.group(2))
     return m_defs
 
