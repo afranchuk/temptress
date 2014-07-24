@@ -4,6 +4,10 @@ from functools import partial
 import re
 import sys
 
+
+FILL_END_MARKER=r"end"
+TEMPLATE_END_MARKER=r"==="
+
 def split_fields(s):
     i = 0
     out = []
@@ -47,18 +51,23 @@ def parse_template_macro(s):
         raise Exception("Missing indices")
     return arr
 
-def remove_lines_between(st, sindex, eindex):
-    i = sindex
-    while st[i] != '\n':
-        i += 1
+def get_line(inp, pos):
+    i = pos
+    while inp[i] != '\n' and i >= 0:
+        i -= 1
     s = i+1
-    e = s
-    while i != eindex:
-        if st[i] == '\n':
-            e = i+1
-        i += 1
 
-    return (st[:s], st[e:])
+    i = pos
+    while inp[i] != '\n' and i < len(inp):
+        i += 1
+    e = i
+    return (s, e)
+
+def get_lines(inp, arr):
+    if isinstance(arr,list):
+        return [get_line(inp, k) for k in arr]
+    else:
+        return get_line(inp, arr)
 
 def fill_template(template, data):
     nline = template
@@ -68,16 +77,44 @@ def fill_template(template, data):
 
 def run_input(defs, inp):
     for k in defs.keys():
-        for p in re.finditer(r"%s\w*\((.*)\)" % k, inp):
-            e = re.compile(r"END %s" % k).search(inp, p.end(0))
-            if not e:
-                raise Exception("Unmatched start of template: %s" % k)
+        n = 0
+        while True:
+            p = re.compile(r"(%s).*\n" % k).search(inp, n)
+            if not p:
+                break
+            
+            (begin, end) = get_line(inp,p.start(0))
+            column = p.start(0) - begin
+            prefix = inp[begin:p.start(0)]
+            templ = re.compile(r"\s+(.*)\s*").search(inp, p.end(1), p.end(0))
+            if not templ:
+                e = re.compile(TEMPLATE_END_MARKER).search(inp, p.end(0))
+                if not e:
+                    break
+                else:
+                    [(ps, pe), (es, ee)] = get_lines(inp, [p.end(1), e.start(0)])
+                template = extract_block(inp, pe+1, es, p.start(1) - ps)
+                temp_end = ee
+            else:
+                template = inp[templ.start(1):templ.end(1)]
+                temp_end = templ.end(0)-1
 
-            (inp_begin, inp_end) = remove_lines_between(inp, p.end(0), e.start(0))
-            template = p.group(1)
+            e = re.compile(FILL_END_MARKER+r"\s+%s" % k).search(inp, temp_end)
+            if e:
+                endpos = e.start(0)
+                endadd = ""
+            else:
+                endpos = temp_end
+                endadd = prefix+FILL_END_MARKER+" %s\n" % k
+
+            [(_,inp_begin), (inp_end,end_end)] = get_lines(inp, [temp_end, endpos])
 
             filled_lines = map(partial(fill_template,template),defs[k])
-            inp = inp_begin + ''.join(filled_lines) + inp_end
+            to_insert = ''.join(filled_lines) + endadd
+            inp = inp[:inp_begin+1] + to_insert + inp[inp_end:]
+            n = inp_begin+1+len(to_insert)
+            if e:
+                n += end_end - inp_end + 1
     return inp
 
 def get_defs(data):
