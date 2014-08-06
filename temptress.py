@@ -75,6 +75,20 @@ def fill_template(template, data):
         nline = nline.replace("{%s}" % l, data[l])
     return nline + "\n"
 
+def extract_block(inp, start, end, col):
+    i = start
+    st = ""
+    while i < end:
+        e = i
+        while e < end and inp[e] != '\n':
+            e += 1
+
+        if e == end and inp[e] != '\n':
+            break
+        st += inp[i+col:e+1]
+        i = e+1
+    return st[:-1]
+
 def run_input(defs, inp):
     for k in defs.keys():
         n = 0
@@ -86,14 +100,16 @@ def run_input(defs, inp):
             (begin, end) = get_line(inp,p.start(0))
             column = p.start(0) - begin
             prefix = inp[begin:p.start(0)]
-            templ = re.compile(r"\s+(.*)\s*").search(inp, p.end(1), p.end(0))
+            pre_whitespace = re.match(r"\s*", prefix).group(0)
+
+            templ = re.compile(r"[ \t]+(.*)\s*").search(inp, p.end(1), p.end(0))
             if not templ:
                 e = re.compile(TEMPLATE_END_MARKER).search(inp, p.end(0))
                 if not e:
                     break
-                else:
-                    [(ps, pe), (es, ee)] = get_lines(inp, [p.end(1), e.start(0)])
-                template = extract_block(inp, pe+1, es, p.start(1) - ps)
+                
+                [(ps, pe), (es, ee)] = get_lines(inp, [p.end(1), e.start(0)])
+                template = extract_block(inp, pe+1, es, column)
                 temp_end = ee
             else:
                 template = inp[templ.start(1):templ.end(1)]
@@ -109,7 +125,7 @@ def run_input(defs, inp):
 
             [(_,inp_begin), (inp_end,end_end)] = get_lines(inp, [temp_end, endpos])
 
-            filled_lines = map(partial(fill_template,template),defs[k])
+            filled_lines = map(partial(fill_template,pre_whitespace+template),defs[k])
             to_insert = ''.join(filled_lines) + endadd
             inp = inp[:inp_begin+1] + to_insert + inp[inp_end:]
             n = inp_begin+1+len(to_insert)
